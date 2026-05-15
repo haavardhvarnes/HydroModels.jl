@@ -21,10 +21,13 @@
 #
 # Capabilities and limitations
 # ----------------------------
-# • **LP only** — refuses MILP cleanly via MOI's
-#   UnsupportedConstraint. `pumped_storage.yaml` (reversible
-#   pump-turbine ⇒ MILP) is detected up front and the script
-#   redirects to HiGHS.
+# • **LP native; MILP via continuous LP relaxation only.** PDLP is a
+#   first-order primal-dual method; it has no integer search. CoolPDLP
+#   exposes MILP via the LP relaxation (per its tutorial:
+#   "use the PDLP algorithm to solve the continuous relaxation").
+#   This script opts in to the relaxation via `HM_PDLP_RELAX=1`.
+#   Without that flag, MILP fixtures (e.g. `pumped_storage.yaml`) are
+#   refused with a pointer to HiGHS.
 # • **CPU Float64**: drop-in replacement for HiGHS. Objective
 #   matches to ~1e-11 on the shipped fixtures.
 # • **GPU Float32**: works on every vendor with a KA backend.
@@ -32,18 +35,26 @@
 #   same attribute pattern. Float32 throughout — objective matches
 #   HiGHS to ~1e-6 (Float32 rounding floor).
 #
-# Backend selection (via env var)
-# -------------------------------
+# Environment variables
+# ---------------------
 #   HM_PDLP_BACKEND=cpu      # default — Float64 + SparseMatrixCSC
 #   HM_PDLP_BACKEND=metal    # Apple Silicon — Float32 + GPUSparseMatrixCSR
 #   HM_PDLP_BACKEND=cuda     # NVIDIA
 #   HM_PDLP_BACKEND=amdgpu   # AMD
 #   HM_PDLP_BACKEND=oneapi   # Intel
 #
+#   HM_PDLP_RELAX=1          # demote binary mode variables to continuous
+#                            # [0,1] before solving (LP relaxation of MILP).
+#   HM_PDLP_TIMEOUT=300      # PDLP time limit (seconds) — default 300.
+#                            # Increase for SHOP-scale (e.g. NO5: 600–1800).
+#   HM_PDLP_RELTOL=1.0e-4    # PDLP termination_reltol — default 1e-4 (loose).
+#                            # Tighten to 1e-6 to match HiGHS LP quality.
+#
 # Usage
 # -----
 #   julia --project=. scripts/run_pipeline_pdlp.jl <yaml> [<market>]
 #   HM_PDLP_BACKEND=metal julia --project=. scripts/run_pipeline_pdlp.jl <yaml>
+#   HM_PDLP_RELAX=1 HM_PDLP_BACKEND=metal julia --project=. scripts/run_pipeline_pdlp.jl <yaml>
 #
 # Install CoolPDLP first:
 #   julia --project=. -e 'using Pkg; Pkg.add("CoolPDLP")'
@@ -110,6 +121,21 @@ end
 
 opts, backend_label = _build_pdlp_options(_BACKEND_NAME)
 
+# Convergence knobs. CoolPDLP's built-in defaults
+# (time_limit = 10.0 s, termination_reltol = 1.0e-6) are too tight
+# for SHOP-scale LPs (NO5 PreSpot has ~30 k variables). Bump both via
+# env vars so the script actually converges on real instances.
+const _TIME_LIMIT = parse(Float64, get(ENV, "HM_PDLP_TIMEOUT", "300"))
+const _RELTOL     = parse(Float64, get(ENV, "HM_PDLP_RELTOL",  "1.0e-4"))
+opts[:time_limit] = _TIME_LIMIT
+opts[:termination_reltol] = _RELTOL
+
+# Continuous-LP-relaxation opt-in for MILP cases.
+const _RELAX_INTEGERS = get(ENV, "HM_PDLP_RELAX", "0") ∈ ("1", "true", "yes")
+if _RELAX_INTEGERS
+    opts[:relax_integers] = true
+end
+
 # --------------------------------------------------------------------
 # Args.
 # --------------------------------------------------------------------
@@ -127,15 +153,35 @@ println("  plants=$(length(parsed.plants))  reservoirs=$(length(parsed.reservoir
 
 prob = ShopShortTermProblem(parsed)
 
-# CoolPDLP cannot handle MILP — refuse early with a useful message.
+# CoolPDLP is a first-order LP method; it handles MILPs only via the
+# **continuous LP relaxation** (per its tutorial). Through the JuMP
+# MOI interface a model with `MOI.ZeroOne` constraints is rejected
+# with `UnsupportedConstraint`, so we have to relax the binaries
+# ourselves. Default: refuse, and point at HiGHS. Opt in with
+# `HM_PDLP_RELAX=1` to demote every binary to continuous [0,1] and
+# solve the LP relaxation. The relaxed solution does NOT enforce
+# integer constraints (e.g. the no-simultaneous-gen-and-pump lock
+# on reversible plants) — useful for cut generation, warm starts,
+# or quick scoping, not for a binding short-term schedule.
 if is_milp(prob)
-    println()
-    println("⚠️  This problem has binary mode variables (reversible pump-")
-    println("    turbine plants detected). CoolPDLP is a first-order LP")
-    println("    solver and does not support MILP. Use HiGHS:")
-    println()
-    println("        julia --project=. scripts/run_pipeline.jl $ARGS_PATH $ARGS_MARKET")
-    exit(1)
+    if _RELAX_INTEGERS
+        println()
+        println("⚠️  MILP detected (reversible pump-turbine plants). Relaxing")
+        println("    all binaries to continuous [0,1] for CoolPDLP — the result")
+        println("    is the LP relaxation, NOT the MILP optimum.")
+    else
+        println()
+        println("⚠️  This problem has binary mode variables (reversible pump-")
+        println("    turbine plants detected). CoolPDLP supports MILP only via")
+        println("    the continuous LP relaxation. Two options:")
+        println()
+        println("    • Re-run with `HM_PDLP_RELAX=1` to relax binaries and solve")
+        println("      the LP relaxation via CoolPDLP. The result will not enforce")
+        println("      the no-simultaneous-gen-and-pump constraint.")
+        println("    • Use HiGHS for the full MILP:")
+        println("          julia --project=. scripts/run_pipeline.jl $ARGS_PATH $ARGS_MARKET")
+        exit(1)
+    end
 end
 
 # --------------------------------------------------------------------

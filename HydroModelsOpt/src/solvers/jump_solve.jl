@@ -227,9 +227,39 @@ function solve(prob::ShopShortTermProblem, solver::JuMPSolver)
         return _empty_solution(prob, lp, "NOT_CALLED", NaN)
     end
 
-    # Apply user-provided solver options (overriding the defaults set in
-    # _build_short_term_lp).
+    # Special-case solver options that are NOT optimizer attributes —
+    # consumed by `solve` itself before the rest are forwarded to JuMP.
+    # `:relax_integers => true` demotes every binary variable to a
+    # continuous [0,1] variable so first-order LP solvers (CoolPDLP,
+    # cuPDLP, …) can attempt the continuous LP relaxation of an MILP.
+    # The relaxed solution does NOT enforce the original integer
+    # constraints (e.g. the no-simultaneous-gen-and-pump lock on
+    # reversible pump-turbine plants) — the caller is on the hook.
+    relax_integers = false
+    forwarded_options = Pair{Any, Any}[]
     for (k, v) in solver.options
+        if Symbol(k) === :relax_integers
+            relax_integers = v === true
+        else
+            push!(forwarded_options, k => v)
+        end
+    end
+    if relax_integers
+        n_relaxed = 0
+        for var in JuMP.all_variables(model)
+            if JuMP.is_binary(var)
+                JuMP.unset_binary(var)
+                JuMP.set_lower_bound(var, 0.0)
+                JuMP.set_upper_bound(var, 1.0)
+                n_relaxed += 1
+            end
+        end
+        n_relaxed > 0 && @info "Relaxed $n_relaxed binary variable(s) to continuous [0,1]."
+    end
+
+    # Apply forwarded solver options (overriding the defaults set in
+    # `_build_short_term_lp`).
+    for (k, v) in forwarded_options
         try
             JuMP.set_optimizer_attribute(model, string(k), v)
         catch
