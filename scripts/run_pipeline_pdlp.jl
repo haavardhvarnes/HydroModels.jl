@@ -28,6 +28,29 @@
 #   This script opts in to the relaxation via `HM_PDLP_RELAX=1`.
 #   Without that flag, MILP fixtures (e.g. `pumped_storage.yaml`) are
 #   refused with a pointer to HiGHS.
+#
+# When PDLP is a good fit (and when it isn't)
+# -------------------------------------------
+# PDLP shines on **uniformly-scaled** LPs (network flow, ML-style
+# problems, LP relaxations of well-scaled combinatorial MIPs). SHOP-
+# style scheduling is the **opposite** — water-value cut slopes hit
+# ~5e8 EUR/Mm³ while flow variables are O(1e-3), an 11-orders-of-
+# magnitude dynamic range in the matrix coefficients. Two
+# consequences:
+#
+#   • **CPU Float64** PDLP converges, but slowly — it needs hundreds
+#     of seconds to reach HiGHS-quality on NO5 (vs ~60 s for HiGHS
+#     itself). Tightening `HM_PDLP_RUIZ` and loosening
+#     `HM_PDLP_RELTOL` help.
+#   • **Apple Metal (Float32)** is **worse than CPU** on conditioned
+#     SHOP LPs. Float32 has only ~7 significant digits, so matrix-
+#     vector products in the cut-slope subspace suffer catastrophic
+#     cancellation and PDLP's KKT-residual check stops being
+#     meaningful. The script warns when Metal is selected for a
+#     problem containing water-value cuts.
+#   • **NVIDIA CUDA / AMD ROCm** are the right GPU paths for PDLP —
+#     they support Float64 natively. The matrix-type sparse-CSR API
+#     is the same as Metal's; just swap the backend and matrix type.
 # • **CPU Float64**: drop-in replacement for HiGHS. Objective
 #   matches to ~1e-11 on the shipped fixtures.
 # • **GPU Float32**: works on every vendor with a KA backend.
@@ -49,6 +72,10 @@
 #                            # Increase for SHOP-scale (e.g. NO5: 600–1800).
 #   HM_PDLP_RELTOL=1.0e-4    # PDLP termination_reltol — default 1e-4 (loose).
 #                            # Tighten to 1e-6 to match HiGHS LP quality.
+#   HM_PDLP_RUIZ=10          # PDLP ruiz_iter — number of preconditioning
+#                            # sweeps. SHOP LPs are ill-conditioned (cut
+#                            # slopes ~5e8 vs flow vars at 1e-3); bump to
+#                            # 50–100 for substantially better convergence.
 #
 # Usage
 # -----
@@ -122,13 +149,19 @@ end
 opts, backend_label = _build_pdlp_options(_BACKEND_NAME)
 
 # Convergence knobs. CoolPDLP's built-in defaults
-# (time_limit = 10.0 s, termination_reltol = 1.0e-6) are too tight
-# for SHOP-scale LPs (NO5 PreSpot has ~30 k variables). Bump both via
-# env vars so the script actually converges on real instances.
+# (time_limit = 10.0 s, termination_reltol = 1.0e-6, ruiz_iter = 10)
+# are tuned for Netlib-scale LPs and assume well-scaled matrices.
+# SHOP-scale LPs are ill-conditioned (water-value cut slopes ~5e8
+# EUR/Mm³ vs flow vars at O(1e-3) → 11-orders-of-magnitude dynamic
+# range) so PDLP needs substantially more Ruiz preconditioning, a
+# looser termination tolerance, and a longer wall-clock budget than
+# the defaults to even approach the optimum.
 const _TIME_LIMIT = parse(Float64, get(ENV, "HM_PDLP_TIMEOUT", "300"))
 const _RELTOL     = parse(Float64, get(ENV, "HM_PDLP_RELTOL",  "1.0e-4"))
+const _RUIZ_ITER  = parse(Int,     get(ENV, "HM_PDLP_RUIZ",    "10"))
 opts[:time_limit] = _TIME_LIMIT
 opts[:termination_reltol] = _RELTOL
+opts[:ruiz_iter] = _RUIZ_ITER
 
 # Continuous-LP-relaxation opt-in for MILP cases.
 const _RELAX_INTEGERS = get(ENV, "HM_PDLP_RELAX", "0") ∈ ("1", "true", "yes")
@@ -152,6 +185,23 @@ println("  plants=$(length(parsed.plants))  reservoirs=$(length(parsed.reservoir
         "tunnels=$(length(parsed.tunnels))")
 
 prob = ShopShortTermProblem(parsed)
+
+# Warn when Metal / oneAPI is selected for a problem with water-value
+# cuts (Float32 cannot handle the 1e11 dynamic range in matrix
+# coefficients). CUDA / AMDGPU keep Float32 too in this script but
+# the user can override at the constructor level for Float64 on
+# those vendors if needed.
+const _HAS_WATER_VALUE_CUTS = !isempty(parsed.cut_groups)
+if _HAS_WATER_VALUE_CUTS && _BACKEND_NAME in ("metal", "oneapi")
+    println()
+    println("⚠️  Backend $_BACKEND_NAME runs CoolPDLP in Float32 (no native")
+    println("    Float64). This problem contains water-value cuts (slopes")
+    println("    ~5e8 EUR/Mm³) — PDLP's KKT residuals will lose precision")
+    println("    catastrophically in Float32. Expect a worse final objective")
+    println("    than CPU Float64 even with a longer wall-clock budget.")
+    println("    For GPU PDLP on conditioned LPs, use CUDA or AMDGPU instead.")
+    println()
+end
 
 # CoolPDLP is a first-order LP method; it handles MILPs only via the
 # **continuous LP relaxation** (per its tutorial). Through the JuMP
