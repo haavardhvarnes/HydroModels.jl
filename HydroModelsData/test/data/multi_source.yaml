@@ -1,0 +1,149 @@
+# Synthetic 3-reservoir-fed plant fixture for the B1.6 multi-source
+# generator path. Three upstream reservoirs (upper_a, upper_b, upper_c)
+# feed `MergePlant` via individual penstock tunnels that join at a
+# `IntakeKP` junction node. The plant discharges to a single
+# `lower` reservoir.
+#
+# Capacities are sized so the per-source qmax matters:
+#   upper_a tunnel: 12 m³/s
+#   upper_b tunnel:  8 m³/s
+#   upper_c tunnel:  5 m³/s
+#   plant q_max:    25 m³/s  (= 12 + 8 + 5)
+#
+# A high-price spike forces the plant to dispatch at q_max; the LP
+# must then saturate every source-side tunnel cap simultaneously,
+# which the per-source `Qg_from[u, s, j]` variables make possible.
+
+time:
+  starttime: "2024-01-01 00:00:00"
+  endtime: "2024-01-02 00:00:00"
+  timeunit: minute
+  timeresolution:
+    "2024-01-01 00:00:00": 60
+
+model:
+  market:
+    NO3:
+      market_type: ENERGY
+      sale_price:
+        "2024-01-01 00:00:00": 30.0
+        "2024-01-01 06:00:00": 30.0
+        "2024-01-01 12:00:00": 200.0    # peak — force full dispatch
+        "2024-01-01 18:00:00": 30.0
+
+  plant:
+    MergePlant:
+      outlet_line: 100.0
+      main_loss: [0.0001]
+      penstock_loss: [0.0001]
+
+  reservoir:
+    upper_a:
+      vol_head:
+        x: [0.0, 100.0]
+        y: [200.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 100.0
+      inflow:
+        "2024-01-01 00:00:00": 5.0
+    upper_b:
+      vol_head:
+        x: [0.0, 60.0]
+        y: [200.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 60.0
+      inflow:
+        "2024-01-01 00:00:00": 3.0
+    upper_c:
+      vol_head:
+        x: [0.0, 30.0]
+        y: [200.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 30.0
+      inflow:
+        "2024-01-01 00:00:00": 2.0
+    lower:
+      vol_head:
+        x: [0.0, 500.0]
+        y: [100.0, 120.0]
+      hrl: 120.0
+      lrl: 100.0
+      start_vol: 200.0
+      inflow:
+        "2024-01-01 00:00:00": 0.0
+
+  generator:
+    MergePlant_|_G1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 25.0]
+          y: [0.0, 25.0]
+      q_min: 0.0
+      q_max: 25.0
+      p_min: 0.0
+      p_max: 25.0
+      p_nom: 25.0
+      penstock: 1
+
+  tunnel:
+    w_upper_a_intake:
+      q_max: 12.0
+      start_height: 200.0
+      end_height: 150.0
+    w_upper_b_intake:
+      q_max: 8.0
+      start_height: 200.0
+      end_height: 150.0
+    w_upper_c_intake:
+      q_max: 5.0
+      start_height: 200.0
+      end_height: 150.0
+    w_intake_plant:
+      q_max: 25.0
+      start_height: 150.0
+      end_height: 130.0
+    w_plant_lower:
+      q_max: 25.0
+      start_height: 100.0
+      end_height: 100.0
+
+connections:
+  - from: upper_a
+    from_type: reservoir
+    to: w_upper_a_intake
+    to_type: tunnel
+  - from: w_upper_a_intake
+    from_type: tunnel
+    to: w_intake_plant
+    to_type: tunnel
+  - from: upper_b
+    from_type: reservoir
+    to: w_upper_b_intake
+    to_type: tunnel
+  - from: w_upper_b_intake
+    from_type: tunnel
+    to: w_intake_plant
+    to_type: tunnel
+  - from: upper_c
+    from_type: reservoir
+    to: w_upper_c_intake
+    to_type: tunnel
+  - from: w_upper_c_intake
+    from_type: tunnel
+    to: w_intake_plant
+    to_type: tunnel
+  - from: w_intake_plant
+    from_type: tunnel
+    to: MergePlant
+    to_type: plant
+  - from: MergePlant
+    from_type: plant
+    to: w_plant_lower
+    to_type: tunnel
+  - from: w_plant_lower
+    from_type: tunnel
+    to: lower
+    to_type: reservoir

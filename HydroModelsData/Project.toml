@@ -1,0 +1,23 @@
+name = "HydroModelsData"
+uuid = "b83cc262-783b-4d80-bd7e-3698e9ea66d0"
+authors = ["Haavard <haavard@example.com>"]
+version = "0.1.0-DEV"
+
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+HydroModelsCore = "35d12705-5efd-4182-93f7-afc386ecd870"
+OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+OrderedCollections = "1"
+Tables = "1"
+YAML = "0.4"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

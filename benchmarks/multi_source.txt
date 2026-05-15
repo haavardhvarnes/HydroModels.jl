@@ -1,0 +1,90 @@
+Multi-source generator attribution impact (B1.6) on NO5 PreSpot case
+=====================================================================
+
+Case: Cases_NO5-PreSpotNoScenarios-2024-04-26-12-41-43-13.yaml
+Market: NO5
+Timesteps: 140
+
+Before B1.6 (each plant attributed to ONE upstream reservoir):
+  Plants                                 : 19
+  Generators                             : 33
+  Tunnels emitted                        : 93   (incl. phantom virtuals)
+  Objective                              : 613.077931 MEUR
+  Energy revenue                         : 5.472825 MEUR
+  Total generation                       : 82 423.04 MWh
+  Total spill                            : 3903.4742 m³/s·tsteps
+  Top spillers:
+    Limarka                               3052.7548 m³/s·tsteps  (78.2 %)
+    Eikrebekken                            850.7194 m³/s·tsteps  (21.8 %)
+
+After B1.6 (per-source `Qg_from` flow split + phantom-tunnel suppression):
+  Plants                                 : 19          unchanged
+  Generators                             : 33          unchanged
+  Tunnels emitted                        : 76          −17 phantom virtuals
+  Objective                              : 612.962666 MEUR    −0.115 MEUR (−0.02 %)
+  Energy revenue                         : 5.526467 MEUR      +0.054 MEUR (+1.0 %)
+  Total generation                       : 83 773.13 MWh      +1350 MWh   (+1.6 %)
+  Total spill                            : 3903.4742 m³/s·tsteps   unchanged
+  Top spillers:
+    Limarka                               3052.7548 m³/s·tsteps  (78.2 %)
+    Eikrebekken                            751.9765 m³/s·tsteps  (19.3 %)
+    Ruståni                                 63.7736 m³/s·tsteps   (1.6 %)
+
+Reading
+-------
+
+The headline change is that **17 phantom virtual reservoir-to-reservoir
+tunnels were suppressed**. These tunnels were emitted by the previous
+parser for non-dominant intakes of multi-source plants — e.g. Logga →
+Eikrebekken (Hemsil2's intake set) — to fake the mass balance when the
+LP could only debit one source reservoir. With B1.6's per-(generator,
+source) flow-split variable `Qg_from[u, s, j]` the LP now debits each
+intake reservoir directly, so the phantom routes are unnecessary and
+removing them eliminates an LP-degeneracy.
+
+Multi-source plants in this case (NO5 PreSpot) according to the audit:
+
+  Plant              Source reservoirs (sorted by capacity desc)
+  -----              --------------------------------------------
+  Aurland2HøyeFall   StoreVargevatn, Svartavatn, Langavatn, Katlavatn,
+                     Berdalsvatn                            (5 sources)
+  Hemsil1            Flævatn, Dyrja, Fagerdøla              (3 sources)
+  Hemsil2            Eikrebekken, Logga, Ruståni            (3 sources)
+  Hol1Urunda         Sisseldøla + Greinefoss + Strandevatn
+                     (via nested junctions)                 (3 sources)
+  Aurland2LaveFall   Rausmesdalen, Vetlebotn                (2 sources)
+  Usta               Ustevatn, RødungenSør                  (2 sources)
+
+Reservoirs feeding any of the above now correctly deplete in proportion
+to the LP-chosen per-source flow allocation, bounded by their respective
+tunnel-chain capacities.
+
+The **objective drops by 0.02 %** (612.96 vs 613.08 MEUR). This is the
+combined effect of:
+
+- Energy revenue going **up by 1 %** (+0.054 MEUR) — the LP now turbines
+  ~1350 MWh more by using each upstream's water value cuts properly
+  rather than artificially routing water through the dominant source.
+- End-of-horizon water values dropping by ~0.17 MEUR — multiple intake
+  reservoirs depleting a little each is valued less than one reservoir
+  staying full while the rest stay full too (water-value cuts are
+  per-reservoir scalar slopes; aggregate sensitivity changes when the
+  attribution is correct).
+
+The **total spill is unchanged** (3903 m³/s·tsteps) — the cascade's
+terminal mass-balance dictates the spill total, and the routing fix
+doesn't change which reservoirs are terminal. What does change:
+**Eikrebekken's share drops** (850 → 752) because phantom inflow from
+Logga / Ruståni is no longer being routed to it. **Ruståni gains a
+small explicit spill** (63.8) — water that previously "vanished" into
+Eikrebekken via the phantom tunnel now correctly stays at Ruståni
+when the per-source tunnel cap is full and the natural inflow exceeds
+it.
+
+The per-reservoir attribution story is the real win. Storage trajectories
+for the 13 distinct intake reservoirs of multi-source plants now reflect
+their actual water-value bindings instead of being lumped into the
+dominant intake. That makes the LP's per-reservoir water-value cuts
+(extracted from SDDP) actionable — operators can read each reservoir's
+trajectory and see the LP's decision per reservoir, not just the
+aggregate-via-dominant.

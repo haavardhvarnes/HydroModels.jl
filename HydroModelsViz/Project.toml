@@ -1,0 +1,34 @@
+name = "HydroModelsViz"
+uuid = "a798d185-2f50-4def-b29e-c2b8747cb8b1"
+authors = ["Haavard <haavard@example.com>"]
+version = "0.1.0-DEV"
+
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+HydroModelsCore = "35d12705-5efd-4182-93f7-afc386ecd870"
+HydroModelsOpt = "3ad2896b-1445-4374-ab33-3e97259a88a5"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+
+[weakdeps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+WGLMakie = "276b4fcb-3e11-5398-bf8b-a0c2d153d008"
+
+[extensions]
+HydroModelsVizCairoMakieExt = "CairoMakie"
+HydroModelsVizGLMakieExt = "GLMakie"
+HydroModelsVizWGLMakieExt = "WGLMakie"
+
+[compat]
+Makie = "0.21, 0.22, 0.23, 0.24, 0.25"
+julia = "1.10"
+
+[extras]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
+HydroModelsData = "b83cc262-783b-4d80-bd7e-3698e9ea66d0"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test", "CairoMakie", "HiGHS", "HydroModelsData"]

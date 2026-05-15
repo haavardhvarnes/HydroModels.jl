@@ -1,0 +1,30 @@
+*.jl.*.cov
+*.jl.cov
+*.jl.mem
+# Pkg.test() generates per-subpackage Manifest.toml files in test/
+# directories; treat every Manifest.toml as transient regardless of
+# location.
+Manifest.toml
+/docs/build/
+/docs/site/
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*~
+
+# Solver / runtime artefacts written into the working tree.
+SDDP.log
+*.log
+/benchmarks/c3_5_metal.csv
+
+# Temp benchmark output written by gated scripts.
+
+# Proprietary SHOP / Harmonie YAML cases — never commit. The new
+# package's public test suite only ships HydroModelsData/test/data/
+# minimal.yaml. Real NO5 cases stay under HydroModels_depr/data/real/
+# (outside this repo) and are accessed via HYDROMODELS_TEST_DATA_DIR.
+data/real/
+**/Cases_NO[1-9]*.yaml
+**/Cases_PreSpot*.yaml
+**/Cases_PostSpot*.yaml

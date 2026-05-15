@@ -1,0 +1,102 @@
+# Minimal synthetic SHOP-style YAML fixture for HydroModelsData tests.
+# Two-reservoir cascade: upper -> [DemoPlant] -> lower, plus a bypass
+# tunnel directly from upper to lower (to exercise tunnel emission). No
+# reserves, no cut groups; those have dedicated fixtures.
+
+time:
+  starttime: "2024-01-01 00:00:00"
+  endtime: "2024-01-02 00:00:00"
+  timeunit: minute
+  timeresolution:
+    "2024-01-01 00:00:00": 60
+
+model:
+  market:
+    NO3:
+      market_type: ENERGY
+      sale_price:
+        "2024-01-01 00:00:00": 30.0
+        "2024-01-01 06:00:00": 45.0
+        "2024-01-01 12:00:00": 60.0
+        "2024-01-01 18:00:00": 40.0
+
+  plant:
+    DemoPlant:
+      outlet_line: 100.0
+      main_loss: [0.0001]
+      penstock_loss: [0.0001]
+
+  reservoir:
+    upper:
+      vol_head:
+        x: [0.0, 50.0, 100.0]
+        y: [200.0, 220.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 50.0
+      inflow:
+        "2024-01-01 00:00:00": 5.0
+        "2024-01-01 12:00:00": 10.0
+    lower:
+      vol_head:
+        x: [0.0, 100.0, 200.0]
+        y: [100.0, 110.0, 120.0]
+      hrl: 120.0
+      lrl: 100.0
+      start_vol: 80.0
+      inflow:
+        "2024-01-01 00:00:00": 2.0
+
+  generator:
+    DemoPlant_|_G1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 10.0, 50.0]
+          y: [0.0, 11.0, 60.0]
+      q_min: 0.0
+      q_max: 50.0
+      p_min: 0.0
+      p_max: 60.0
+      p_nom: 60.0
+      penstock: 1
+
+  tunnel:
+    w_upper_plant:
+      q_max: 100.0
+      start_height: 200.0
+      end_height: 150.0
+    w_plant_lower:
+      q_max: 100.0
+      start_height: 100.0
+      end_height: 100.0
+    w_upper_lower_bypass:
+      q_max: 30.0
+      start_height: 200.0
+      end_height: 100.0
+      loss_factor: 0.0
+
+connections:
+  - from: upper
+    from_type: reservoir
+    to: w_upper_plant
+    to_type: tunnel
+  - from: w_upper_plant
+    from_type: tunnel
+    to: DemoPlant
+    to_type: plant
+  - from: DemoPlant
+    from_type: plant
+    to: w_plant_lower
+    to_type: tunnel
+  - from: w_plant_lower
+    from_type: tunnel
+    to: lower
+    to_type: reservoir
+  - from: upper
+    from_type: reservoir
+    to: w_upper_lower_bypass
+    to_type: tunnel
+  - from: w_upper_lower_bypass
+    from_type: tunnel
+    to: lower
+    to_type: reservoir

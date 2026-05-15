@@ -1,0 +1,112 @@
+# Synthetic 1-reservoir → terminal-junction fixture for B1.7.
+#
+# Topology:
+#   upper ──(plant w_upper_plant)──> DemoPlant ──(w_plant_TerminalKP)──> TerminalKP
+#   upper ──(bypass tunnel)──────────────────────────────────────────> TerminalKP
+#
+# `TerminalKP` is a typed `Junction{T}` declared under `model.river:`
+# with both `max_flow: 50.0` (hard cap, never binds — generously sized)
+# and `flow: 3.0` (soft min flow — must be released through the
+# spillway when needed). The fixture is sized so that during the cheap-
+# price hours the LP wants to *hold* water (water value is implicitly
+# positive), but the 3 m³/s min-flow obligation at TerminalKP forces a
+# minimum release every hour anyway.
+
+time:
+  starttime: "2024-01-01 00:00:00"
+  endtime: "2024-01-02 00:00:00"
+  timeunit: minute
+  timeresolution:
+    "2024-01-01 00:00:00": 60
+
+model:
+  market:
+    NO3:
+      market_type: ENERGY
+      sale_price:
+        "2024-01-01 00:00:00": 20.0
+        "2024-01-01 06:00:00": 20.0
+        "2024-01-01 12:00:00": 100.0    # peak hour
+        "2024-01-01 18:00:00": 20.0
+
+  plant:
+    DemoPlant:
+      outlet_line: 100.0
+      main_loss: [0.0001]
+      penstock_loss: [0.0001]
+
+  reservoir:
+    upper:
+      vol_head:
+        x: [0.0, 100.0]
+        y: [200.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 80.0
+      inflow:
+        "2024-01-01 00:00:00": 6.0
+
+  generator:
+    DemoPlant_|_G1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 10.0]
+          y: [0.0, 10.0]
+      q_min: 0.0
+      q_max: 10.0
+      p_min: 0.0
+      p_max: 10.0
+      p_nom: 10.0
+      penstock: 1
+
+  tunnel:
+    w_upper_plant:
+      q_max: 10.0
+      start_height: 200.0
+      end_height: 150.0
+    w_plant_TerminalKP:
+      q_max: 10.0
+      start_height: 100.0
+      end_height: 100.0
+    w_upper_TerminalKP_bypass:
+      q_max: 10.0
+      start_height: 200.0
+      end_height: 100.0
+      loss_factor: 0.0
+
+  river:
+    TerminalKP:
+      upstream_elevation: 100.0
+      max_flow:
+        "2024-01-01 00:00:00": 50.0
+      flow:
+        "2024-01-01 00:00:00": 3.0
+        "2024-01-01 06:00:00": 3.0
+        "2024-01-01 12:00:00": 3.0
+        "2024-01-01 18:00:00": 3.0
+
+connections:
+  - from: upper
+    from_type: reservoir
+    to: w_upper_plant
+    to_type: tunnel
+  - from: w_upper_plant
+    from_type: tunnel
+    to: DemoPlant
+    to_type: plant
+  - from: DemoPlant
+    from_type: plant
+    to: w_plant_TerminalKP
+    to_type: tunnel
+  - from: w_plant_TerminalKP
+    from_type: tunnel
+    to: TerminalKP
+    to_type: river
+  - from: upper
+    from_type: reservoir
+    to: w_upper_TerminalKP_bypass
+    to_type: tunnel
+  - from: w_upper_TerminalKP_bypass
+    from_type: tunnel
+    to: TerminalKP
+    to_type: river

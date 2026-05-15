@@ -1,0 +1,110 @@
+# Synthetic 2-reservoir cascade designed to force spill at the upstream
+# reservoir (`upper`) and validate that the LP routes that spill into
+# the downstream reservoir (`lower`) instead of discarding it.
+#
+# Sizing rationale:
+# - `upper` is tiny (s_max = 5 Mm³, s0 = 5 Mm³ at the cap) and receives
+#   50 m³/s natural inflow. The generator can only pass 5 m³/s, the
+#   bypass tunnel can only pass 5 m³/s, and the storage is full from
+#   t = 0. The remaining ~40 m³/s every hour must spill.
+# - `lower` is large enough to absorb the routed water without binding
+#   its own s_max, so the LP optimum exercises the spill-routing path
+#   end-to-end rather than producing a cascade of spills.
+# - Hourly resolution, 24 timesteps, flat 50 EUR/MWh price.
+
+time:
+  starttime: "2024-01-01 00:00:00"
+  endtime: "2024-01-02 00:00:00"
+  timeunit: minute
+  timeresolution:
+    "2024-01-01 00:00:00": 60
+
+model:
+  market:
+    NO3:
+      market_type: ENERGY
+      sale_price:
+        "2024-01-01 00:00:00": 50.0
+        "2024-01-01 06:00:00": 50.0
+        "2024-01-01 12:00:00": 50.0
+        "2024-01-01 18:00:00": 50.0
+
+  plant:
+    DemoPlant:
+      outlet_line: 100.0
+      main_loss: [0.0001]
+      penstock_loss: [0.0001]
+
+  reservoir:
+    upper:
+      vol_head:
+        x: [0.0, 5.0]
+        y: [200.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      start_vol: 5.0
+      inflow:
+        "2024-01-01 00:00:00": 50.0
+    lower:
+      vol_head:
+        x: [0.0, 500.0]
+        y: [100.0, 120.0]
+      hrl: 120.0
+      lrl: 100.0
+      start_vol: 100.0
+      inflow:
+        "2024-01-01 00:00:00": 0.0
+
+  generator:
+    DemoPlant_|_G1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 5.0]
+          y: [0.0, 5.0]
+      q_min: 0.0
+      q_max: 5.0
+      p_min: 0.0
+      p_max: 5.0
+      p_nom: 5.0
+      penstock: 1
+
+  tunnel:
+    w_upper_plant:
+      q_max: 5.0
+      start_height: 200.0
+      end_height: 150.0
+    w_plant_lower:
+      q_max: 5.0
+      start_height: 100.0
+      end_height: 100.0
+    w_upper_lower_bypass:
+      q_max: 5.0
+      start_height: 200.0
+      end_height: 100.0
+      loss_factor: 0.0
+
+connections:
+  - from: upper
+    from_type: reservoir
+    to: w_upper_plant
+    to_type: tunnel
+  - from: w_upper_plant
+    from_type: tunnel
+    to: DemoPlant
+    to_type: plant
+  - from: DemoPlant
+    from_type: plant
+    to: w_plant_lower
+    to_type: tunnel
+  - from: w_plant_lower
+    from_type: tunnel
+    to: lower
+    to_type: reservoir
+  - from: upper
+    from_type: reservoir
+    to: w_upper_lower_bypass
+    to_type: tunnel
+  - from: w_upper_lower_bypass
+    from_type: tunnel
+    to: lower
+    to_type: reservoir

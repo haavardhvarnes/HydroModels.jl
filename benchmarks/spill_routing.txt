@@ -1,0 +1,56 @@
+Spill routing impact (B1.5) on NO5 PreSpot case
+=================================================
+
+Case: Cases_NO5-PreSpotNoScenarios-2024-04-26-12-41-43-13.yaml
+Market: NO5
+Timesteps: 140
+
+Before B1.5 (Qspill as a per-reservoir sink — water vanishes from the LP):
+  Objective:   613.077931 MEUR
+  Total spill: 3903.4742 m³/s·timesteps
+  Top spillers:
+    Limarka                           3052.7548 m³/s·tsteps  (78.2 %)
+    Flatsjø                            469.2956 m³/s·tsteps  (12.0 %)
+    Eikrebekken                        159.4713 m³/s·tsteps  (4.1 %)
+    Ruståni                            156.1686 m³/s·tsteps  (4.0 %)
+    Logga                               65.7838 m³/s·tsteps  (1.7 %)
+
+After B1.5 (Qspill[i] flows into the topological downstream module's mass
+balance — inferred from generator first, then river tunnel):
+  Objective:   613.077931 MEUR        — unchanged
+  Total spill: 3903.4742 m³/s·timesteps — unchanged
+  Top spillers:
+    Limarka                           3052.7548 m³/s·tsteps  (78.2 %)
+    Eikrebekken                        850.7194 m³/s·tsteps  (21.8 %)
+
+Reading
+-------
+
+The objective and total spill are bit-identical because the routing only
+shifts where the spilled water lands — it doesn't open up a new
+generation path for the LP. In this case, Flatsjø + Ruståni + Logga's
+spill (~691 m³/s·tsteps combined) now flows into Eikrebekken's mass
+balance (parser inferred Eikrebekken as their tunnel-downstream).
+Eikrebekken has no outgoing tunnel or generator that the LP can use,
+so it spills the routed water on. Net result: the same total mass is
+"lost" at Eikrebekken (now: 159 + 691 ≈ 850 m³/s·tsteps) instead of
+disappearing piecemeal at Flatsjø / Ruståni / Logga. Limarka was and
+still is a true terminal node — no outgoing tunnel or generator in
+the parsed model.
+
+The B1.5 fix is a **correctness improvement, not a performance one**
+for this specific case. The spillover bookkeeping is now physically
+honest: water entering the cascade either exits through a turbine
+(captured in `Qg`), through a generator's pump (`Qpump`), through an
+explicit river tunnel (`Qtun`), or it overflows downstream until it
+reaches a terminal node and spills out there. Before B1.5, water that
+overtopped any upstream dam was silently deleted from the system.
+
+The user-facing implication: the "Top spillers" diagnostic from
+`scripts/run_pipeline.jl` is now interpretable as
+**"where is water actually leaving the system?"** rather than
+**"where in the cascade is local capacity binding?"**. The post-B1.5
+list (Limarka + Eikrebekken) identifies the two genuine terminal
+nodes; the operational fix on the SHOP side would be to add a
+downstream tunnel from one of those two if more water can be captured
+in practice.

@@ -1,0 +1,114 @@
+# Pumped-storage fixture for testing MILP unit commitment. Same
+# 2-reservoir topology as minimal.yaml, but the plant now owns both a
+# generator (upper → lower, generates power) and a pump (lower →
+# upper, consumes power). The mode variable forbids generating and
+# pumping in the same timestep.
+#
+# Price profile is designed for clear arbitrage:
+#   00:00 — 20 EUR/MWh   (cheap → pump up if upper has headroom)
+#   06:00 — 80 EUR/MWh   (peak → generate)
+#   12:00 — 25 EUR/MWh   (cheap → pump)
+#   18:00 — 75 EUR/MWh   (peak → generate)
+#
+# Round-trip: turbine ~11 MW from 10 m³/s; pump ~12.5 MW into 10 m³/s.
+# At 20 → 80 EUR/MWh that's a 4× ratio, well above the 12.5 / 11 ≈ 1.14
+# round-trip energy break-even — arbitrage is unambiguous.
+
+time:
+  starttime: "2024-01-01 00:00:00"
+  endtime: "2024-01-02 00:00:00"
+  timeunit: minute
+  timeresolution:
+    "2024-01-01 00:00:00": 60
+
+model:
+  market:
+    NO3:
+      market_type: ENERGY
+      sale_price:
+        "2024-01-01 00:00:00": 20.0
+        "2024-01-01 06:00:00": 80.0
+        "2024-01-01 12:00:00": 25.0
+        "2024-01-01 18:00:00": 75.0
+
+  plant:
+    DemoPlant:
+      outlet_line: 100.0
+      main_loss: [0.0001]
+      penstock_loss: [0.0001]
+
+  reservoir:
+    upper:
+      vol_head:
+        x: [0.0, 0.5, 1.0]
+        y: [200.0, 220.0, 240.0]
+      hrl: 240.0
+      lrl: 200.0
+      # Small headwater (0.2 Mm³) — generating at max for ~1.85 h drains it.
+      # Forces the LP to pump up during cheap hours and ride out peaks.
+      start_vol: 0.2
+      inflow:
+        "2024-01-01 00:00:00": 5.0
+    lower:
+      vol_head:
+        x: [0.0, 0.5, 1.0]
+        y: [100.0, 110.0, 120.0]
+      hrl: 120.0
+      lrl: 100.0
+      start_vol: 0.8
+      inflow:
+        "2024-01-01 00:00:00": 2.0
+
+  generator:
+    DemoPlant_|_G1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 10.0, 30.0]
+          y: [0.0, 11.0, 33.0]
+      q_min: 0.0
+      q_max: 30.0
+      p_min: 0.0
+      p_max: 33.0
+      p_nom: 33.0
+      penstock: 1
+
+  pump:
+    DemoPlant_|_P1:
+      pq_curve:
+        - ref: 130.0
+          x: [0.0, 10.0, 25.0]
+          y: [0.0, 12.5, 31.25]
+      q_min: 0.0
+      q_max: 25.0
+      p_min: 0.0
+      p_max: 31.25
+      p_nom: 31.25
+      penstock: 1
+
+  tunnel:
+    w_upper_plant:
+      q_max: 100.0
+      start_height: 200.0
+      end_height: 150.0
+    w_plant_lower:
+      q_max: 100.0
+      start_height: 100.0
+      end_height: 100.0
+
+connections:
+  - from: upper
+    from_type: reservoir
+    to: w_upper_plant
+    to_type: tunnel
+  - from: w_upper_plant
+    from_type: tunnel
+    to: DemoPlant
+    to_type: plant
+  - from: DemoPlant
+    from_type: plant
+    to: w_plant_lower
+    to_type: tunnel
+  - from: w_plant_lower
+    from_type: tunnel
+    to: lower
+    to_type: reservoir

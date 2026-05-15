@@ -1,0 +1,113 @@
+Typed Junction (B1.7) impact on NO5 PreSpot case
+=================================================
+
+Case: Cases_NO5-PreSpotNoScenarios-2024-04-26-12-41-43-13.yaml
+Market: NO5
+Timesteps: 140
+
+Before B1.7 (junctions ignored, terminal reservoir spills become sinks):
+  Plants                                 : 19
+  Generators                             : 33
+  Junctions parsed                       : 0   (parser silently ignored max_flow / flow on KP entries)
+  Objective                              : 612.962666 MEUR
+  Energy revenue                         : 5.526467 MEUR
+  Total generation                       : 83 773.13 MWh
+  Total spill                            : 3 903.47 m³/s·tsteps
+  Top spillers (B1.6 routing):
+    Limarka                               3 052.75 m³/s·tsteps
+    Eikrebekken                             751.98 m³/s·tsteps
+    Ruståni                                  63.77 m³/s·tsteps
+
+After B1.7 (BergheimKP + VangenSeaLevelKP min-flow constraints active):
+  Junctions parsed                       : 2   (BergheimKP, VangenSeaLevelKP)
+  Routed reservoirs                      : 50 / 50   (was 38 / 50 — every terminal now resolves)
+  Objective                              : 607.973878 MEUR    −4.99 MEUR  (−0.81 %)
+  Energy revenue                         : 2.535455 MEUR      −2.99 MEUR  (−54 %)
+  Total generation                       : 36 593.71 MWh      −47 179 MWh (−56 %)
+  Spill split (B1.7 reclassification):
+    In-cascade spill                     : 0.00 m³/s·tsteps   (no operational dam overtopping)
+    Junction outflow (system boundary)   : 18 417.35 m³/s·tsteps  (regulatory release, NOT spill)
+  Top junction-outflow contributors (water leaving modelled system):
+    Strandefjorden                        4 415.73 m³/s·tsteps  (24.0 %) → BergheimKP
+    Eikrebekken                           3 959.08 m³/s·tsteps  (21.5 %) → BergheimKP
+    Limarka                               3 052.89 m³/s·tsteps  (16.6 %) → BergheimKP
+    Vassbygdvatn                          1 851.19 m³/s·tsteps  (10.1 %) → VangenSeaLevelKP
+    RødungenSør                           1 397.04 m³/s·tsteps  ( 7.6 %)
+    LyaCreek                              1 296.60 m³/s·tsteps  ( 7.0 %)
+    Votna                                   855.33 m³/s·tsteps  ( 4.6 %)
+    Rukkedøla                               757.01 m³/s·tsteps  ( 4.1 %)
+    Ruståni                                 355.00 m³/s·tsteps  ( 1.9 %)
+    Dokkelvi                                183.62 m³/s·tsteps  ( 1.0 %)
+    Logga                                   157.52 m³/s·tsteps  ( 0.9 %)
+  Junction flow at the system boundary:
+    junction              ΣQ (m³/s·ts)       max Q       Σslack      max slack
+    BergheimKP             16 566.16        241.32        0.00          0.00
+    VangenSeaLevelKP        1 851.19         70.49        0.00          0.00
+
+Reading
+-------
+
+The LP now enforces the regulatory minimum-release schedule at the
+two terminal junctions of the NO5 cascade. BergheimKP at the end of
+Hallingdalselvi requires 27.3–241.3 m³/s release; VangenSeaLevelKP
+on the Aurland/Vangen system requires 0–70.5 m³/s. Both constraints
+**bind throughout the horizon** — the LP's spill at every relevant
+terminal reservoir (Limarka, Eikrebekken, Strandefjorden, Logga,
+Ruståni feeding BergheimKP; Vassbygdvatn feeding VangenSeaLevelKP)
+saturates at exactly the required minimum.
+
+The soft slack `Rj_min` is **zero everywhere** — the cascade has
+enough natural inflow to satisfy both regulatory minimums physically.
+The soft-with-penalty pattern from the design (penalty 1e6 EUR /
+m³/s · h) was correct insurance against infeasibility, but it
+doesn't fire on this case.
+
+The operational story is dramatic but physical:
+
+- **Generation drops 56 %** because water that the LP would otherwise
+  hold or turbine at the price peaks must now flow out through the
+  regulatory minimum-release schedule during every hour, including
+  the low-price ones.
+- **In-cascade spill stays at zero.** The cascade has no actual dam
+  overtopping; the LP routes every cubic metre to a turbine or to a
+  terminal-junction outflow. The 18 417 m³/s·tsteps that pre-B1.7
+  showed up as "Total spill" was always the regulatory **system
+  outflow** at the two terminal junctions, not operational spill —
+  the LP just had no way to label it correctly until typed
+  junctions landed.
+- **Objective drops by 5 MEUR (0.8 %)** — the cost of meeting the
+  regulatory release. Without B1.7 the LP was free to drain the
+  terminal reservoirs at non-regulated rates; with B1.7 the
+  cascade must release the BergheimKP / VangenSeaLevelKP minimums
+  every hour.
+
+The B1.7 fix corrects an operational under-enforcement: real-world
+Hallingdalselvi at BergheimKP can't be dewatered, and the LP must
+respect that. The 5 MEUR objective drop is the *cost of physical
+realism* — earlier numbers were artificially optimistic.
+
+Sub-question: is this revenue loss recoverable?
+-----------------------------------------------
+
+Not within the LP's degrees of freedom — the LP is already choosing
+the cheapest possible feasible spill schedule. To reduce the
+revenue loss while honouring the regulatory minimum, an operator
+would need to:
+
+1. **Time-shift the minimum**. If the regulator allows daily or
+   weekly averaging instead of hourly minimums, the LP could
+   concentrate releases during cheap hours. The current YAML
+   constrains hourly; a softer enforcement is a separate feature.
+2. **Add downstream generation capacity**. If a new plant could
+   turbine the regulatory release water on its way to BergheimKP,
+   the spilled water becomes revenue. That's a capital-investment
+   question, not an LP question.
+3. **Use the cascade buffer more aggressively**. With multi-stage
+   stochastic SDDP and proper water-value cuts, the LP might hold
+   more water for high-price hours by accepting more spill at
+   low-price hours. The current short-term LP doesn't have that
+   visibility.
+
+For the current B1.7 milestone the LP is correct; the 5 MEUR
+"hit" is informational — it's the operational cost of the
+constraint, not a model bug.

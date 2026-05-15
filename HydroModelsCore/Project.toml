@@ -1,0 +1,29 @@
+name = "HydroModelsCore"
+uuid = "35d12705-5efd-4182-93f7-afc386ecd870"
+authors = ["Haavard <haavard@example.com>"]
+version = "0.1.0-DEV"
+
+[deps]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+GPUArrays = "0c68f7d7-f131-5f86-a1c3-88cf8149b2d7"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[compat]
+GPUArrays = "10, 11"
+KernelAbstractions = "0.9"
+MathOptInterface = "1"
+OrderedCollections = "1"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+TestItems = "1c621080-faea-4a02-84b6-bbd5e436b8fe"
+
+[targets]
+test = ["Test", "TestItems"]
