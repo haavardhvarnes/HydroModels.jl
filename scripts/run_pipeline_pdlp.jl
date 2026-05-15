@@ -7,52 +7,43 @@
 # Why CoolPDLP is interesting here
 # --------------------------------
 # CoolPDLP is a pure-Julia primal-dual hybrid gradient (PDLP) LP
-# solver built on KernelAbstractions.jl. The interesting properties
-# for this package:
+# solver built on KernelAbstractions.jl:
 #
-#   • Hardware-agnostic — same source compiles on CPU, NVIDIA,
-#     AMD, Apple, Intel. Matches HydroModelsOpt's backend abstraction
-#     conceptually.
-#   • MathOptInterface optimizer — drop-in replacement for HiGHS via
-#     `JuMPSolver(CoolPDLP.Optimizer)`. No bridge code required.
-#   • Pluggable sparse matrix type — swap `SparseMatrixCSC` for
-#     `cuSPARSE.CuSparseMatrixCSR` on NVIDIA, etc.
+#   • Hardware-agnostic — same source compiles on CPU, NVIDIA, AMD,
+#     Apple, Intel via KA backends. Matches HydroModelsOpt's
+#     backend abstraction exactly.
+#   • MathOptInterface optimizer — drops into the existing
+#     `JuMPSolver(CoolPDLP.Optimizer)` dispatch path. No bridge code.
+#   • Pluggable scalar / index / sparse-matrix types via JuMP
+#     attributes — `float_type`, `int_type`, `matrix_type`,
+#     `backend`. The MOI wrapper forwards these straight to the
+#     direct `PDLP(T, Ti, M; backend=…)` constructor.
 #
 # Capabilities and limitations
 # ----------------------------
-# CoolPDLP is **LP only** — it cleanly rejects MILP via MOI:
+# • **LP only** — refuses MILP cleanly via MOI's
+#   UnsupportedConstraint. `pumped_storage.yaml` (reversible
+#   pump-turbine ⇒ MILP) is detected up front and the script
+#   redirects to HiGHS.
+# • **CPU Float64**: drop-in replacement for HiGHS. Objective
+#   matches to ~1e-11 on the shipped fixtures.
+# • **GPU Float32**: works on every vendor with a KA backend.
+#   Apple Metal validated locally; CUDA / AMDGPU / oneAPI follow the
+#   same attribute pattern. Float32 throughout — objective matches
+#   HiGHS to ~1e-6 (Float32 rounding floor).
 #
-#   ERROR: UnsupportedConstraint:
-#     `MOI.VariableIndex`-in-`MOI.ZeroOne` constraints are not
-#     supported by the solver you have chosen.
+# Backend selection (via env var)
+# -------------------------------
+#   HM_PDLP_BACKEND=cpu      # default — Float64 + SparseMatrixCSC
+#   HM_PDLP_BACKEND=metal    # Apple Silicon — Float32 + GPUSparseMatrixCSR
+#   HM_PDLP_BACKEND=cuda     # NVIDIA
+#   HM_PDLP_BACKEND=amdgpu   # AMD
+#   HM_PDLP_BACKEND=oneapi   # Intel
 #
-# So `pumped_storage.yaml` (reversible pump-turbine ⇒ MILP) will not
-# run here; use HiGHS instead.
-#
-# For LP-only SHOP cases (minimal.yaml, minimal_with_reserves.yaml,
-# cascade_spill.yaml, multi_source.yaml, junction.yaml, plus any
-# real SHOP case without binary modes) CoolPDLP solves to the same
-# objective as HiGHS, typically within ~1e-11 relative gap.
-#
-# GPU notes
-# ---------
-#   • NVIDIA: load CUDA + cuSPARSE and pass
-#       JuMPSolver(CoolPDLP.Optimizer; options = Dict(
-#           :backend => CUDABackend(),
-#           :matrix_type => cuSPARSE.CuSparseMatrixCSR,
-#       ))
-#     Expected to work out of the box per CoolPDLP's README.
-#   • AMD: same pattern with `AMDGPU.ROCBackend()` and
-#     `AMDGPU.rocSPARSE.ROCSparseMatrixCSR`.
-#   • Apple Metal: NOT yet usable. Metal has no native Float64 and
-#     no Metal-flavored sparse matrix type in the Julia ecosystem
-#     today; CoolPDLP's `adapt(MetalBackend(), ::Vector{Float64})`
-#     errors out. For Metal use `run_pipeline_gpu.jl` (Lagrangian
-#     Bellman DP), not this script.
-#   • Intel oneAPI: same Metal-style limitations.
-#
-# Usage:
-#   julia --project=. scripts/run_pipeline_pdlp.jl <path-to-yaml> [<market_name>]
+# Usage
+# -----
+#   julia --project=. scripts/run_pipeline_pdlp.jl <yaml> [<market>]
+#   HM_PDLP_BACKEND=metal julia --project=. scripts/run_pipeline_pdlp.jl <yaml>
 #
 # Install CoolPDLP first:
 #   julia --project=. -e 'using Pkg; Pkg.add("CoolPDLP")'
@@ -65,9 +56,63 @@ using HiGHS
 using Tables
 using Printf
 
-# Disambiguate — both HydroModelsOpt and CoolPDLP export `solve`.
-const SOLVE = HydroModelsOpt.solve
+const SOLVE = HydroModelsOpt.solve   # disambiguate from CoolPDLP.solve
 
+# --------------------------------------------------------------------
+# Backend selection — load the requested GPU vendor package and build
+# the JuMP-attribute option dict that CoolPDLP's MOI_wrapper forwards
+# to the direct `PDLP(T, Ti, M; backend=…)` constructor.
+# --------------------------------------------------------------------
+const _BACKEND_NAME = lowercase(get(ENV, "HM_PDLP_BACKEND", "cpu"))
+
+# Load the requested GPU vendor package at top level so the world
+# age advances before any function references it. Calling
+# `@eval using …` inside a function body bumps the world age past
+# the function's own compile point and triggers `UndefVarError` on
+# the first reference.
+if _BACKEND_NAME == "metal"
+    @eval using Metal
+elseif _BACKEND_NAME == "cuda"
+    @eval using CUDA
+elseif _BACKEND_NAME == "amdgpu"
+    @eval using AMDGPU
+elseif _BACKEND_NAME == "oneapi"
+    @eval using oneAPI
+elseif _BACKEND_NAME != "cpu"
+    error("Unknown HM_PDLP_BACKEND=\"$_BACKEND_NAME\" — use one of cpu/metal/cuda/amdgpu/oneapi.")
+end
+
+function _build_pdlp_options(backend_name::AbstractString)
+    if backend_name == "cpu"
+        return Dict{Symbol, Any}(:show_progress => false), "CPU (Float64, SparseMatrixCSC)"
+    end
+    common = Dict{Symbol, Any}(
+        :show_progress => false,
+        :float_type    => Float32,
+        :int_type      => Int32,
+        :matrix_type   => CoolPDLP.GPUSparseMatrixCSR,
+    )
+    if backend_name == "metal"
+        common[:backend] = Metal.MetalBackend()
+        return common, "Apple Metal (Float32, GPUSparseMatrixCSR)"
+    elseif backend_name == "cuda"
+        common[:backend] = CUDA.CUDABackend()
+        return common, "NVIDIA CUDA (Float32, GPUSparseMatrixCSR)"
+    elseif backend_name == "amdgpu"
+        common[:backend] = AMDGPU.ROCBackend()
+        return common, "AMD ROCm (Float32, GPUSparseMatrixCSR)"
+    elseif backend_name == "oneapi"
+        common[:backend] = oneAPI.oneAPIBackend()
+        return common, "Intel oneAPI (Float32, GPUSparseMatrixCSR)"
+    end
+    error("unreachable")
+end
+
+opts, backend_label = _build_pdlp_options(_BACKEND_NAME)
+
+# --------------------------------------------------------------------
+# Args.
+# --------------------------------------------------------------------
 const ARGS_PATH = length(ARGS) >= 1 ? ARGS[1] :
     joinpath(@__DIR__, "..", "HydroModelsData", "test", "data", "minimal.yaml")
 const ARGS_MARKET = length(ARGS) >= 2 ? ARGS[2] : "NO3"
@@ -94,10 +139,10 @@ if is_milp(prob)
 end
 
 # --------------------------------------------------------------------
-# Solve.
+# Solve with CoolPDLP on the requested backend.
 # --------------------------------------------------------------------
-println("\nBuilding and solving LP with CoolPDLP (PDLP first-order, CPU)…")
-solver = JuMPSolver(CoolPDLP.Optimizer; options = Dict(:show_progress => false))
+println("\nBuilding and solving LP with CoolPDLP on $backend_label…")
+solver = JuMPSolver(CoolPDLP.Optimizer; options = opts)
 @time sol_pdlp = SOLVE(prob, solver)
 
 println("\nCoolPDLP results:")
@@ -105,9 +150,9 @@ println("  termination: ", sol_pdlp.termination)
 @printf("  objective:   %.6f EUR\n", sol_pdlp.objective)
 
 # --------------------------------------------------------------------
-# Side-by-side comparison with HiGHS.
+# Side-by-side reference solve with HiGHS.
 # --------------------------------------------------------------------
-println("\nReference: same problem solved with HiGHS…")
+println("\nReference: same problem solved with HiGHS (CPU)…")
 solver_highs = JuMPSolver(HiGHS.Optimizer; options = Dict(:output_flag => false))
 @time sol_highs = SOLVE(prob, solver_highs)
 
@@ -118,15 +163,19 @@ println("  termination: ", sol_highs.termination)
 gap = abs(sol_pdlp.objective - sol_highs.objective) /
       max(abs(sol_highs.objective), 1.0e-9)
 @printf("\nRelative objective gap (CoolPDLP vs HiGHS): %.3e\n", gap)
-if gap < 1.0e-4
-    println("  ✓ within 1e-4 of HiGHS — CoolPDLP is a viable drop-in for this LP.")
+# Tighter tolerance on CPU Float64; looser on Float32 GPU paths.
+tol = _BACKEND_NAME == "cpu" ? 1.0e-4 : 1.0e-3
+if gap < tol
+    println("  ✓ within $tol of HiGHS — CoolPDLP is a viable drop-in.")
 else
-    println("  ⚠ larger than 1e-4 — check PDLP termination tolerances (",
-            "`primal_weight_damping`, `termination_reltol` …)")
+    println("  ⚠ larger than $tol — check PDLP termination tolerances ",
+            "(`termination_reltol`, `max_kkt_passes` …) or the Float32 ",
+            "rounding floor on GPU paths.")
 end
 
 # --------------------------------------------------------------------
-# Sanity-check that the primal tables look comparable.
+# Table shapes — sanity check that the JuMP→HydroSolution path
+# behaves the same regardless of optimizer.
 # --------------------------------------------------------------------
 println("\nTable shape comparison:")
 for fld in (:storage, :p_gen, :q_gen, :q_tunnel, :spill, :revenue)
