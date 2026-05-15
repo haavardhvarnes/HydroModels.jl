@@ -36,6 +36,12 @@ end
 
 Base.eltype(::PARProcess{T}) where {T} = T
 
+"""
+    num_periods(p::PARProcess) -> Int
+
+Number of within-year periods (typically `52` for weekly data) the
+PAR(1) model was fit to.
+"""
 num_periods(p::PARProcess) = length(p.period_means)
 
 """

@@ -101,8 +101,34 @@ How forward and backward iterations are coordinated. From Helseth &
 Braaten (2015) and follow-up work.
 """
 abstract type ParallelismMode end
+
+"""
+    SynchronousParallel <: ParallelismMode
+
+Forward and backward iterations advance in lockstep across processes:
+all forward passes complete before any backward pass starts. The
+baseline parallel mode in Helseth & Braaten (2015).
+"""
 struct SynchronousParallel <: ParallelismMode end
+
+"""
+    AsynchronousParallel <: ParallelismMode
+
+Forward and backward processes overlap: backward passes may start as
+soon as their input becomes available, without waiting for all
+forward passes to complete. Faster wall-clock but the cut set is
+slightly stale across processes.
+"""
 struct AsynchronousParallel <: ParallelismMode end
+
+"""
+    TotallyAsynchronous <: ParallelismMode
+
+Forward and backward processes share no synchronization barriers.
+Each process iterates independently against the latest available
+cut set. Highest throughput, weakest convergence guarantees.
+Helseth & Braaten (2015).
+"""
 struct TotallyAsynchronous <: ParallelismMode end
 
 # ============================================================
@@ -116,8 +142,27 @@ How a problem is decomposed for Lagrangian relaxation. The choice
 determines which coupling constraints are dualized.
 """
 abstract type DecompositionStrategy end
+
+"""
+    ScenarioDecomposition <: DecompositionStrategy
+
+Dualize the per-scenario non-anticipativity (or end-of-horizon) cou-
+pling. Each subproblem is one whole-path scenario; multipliers
+enforce consistency across scenarios. The default for
+`LagrangianHydroSolver` on `StagewiseIndependent` uncertainty.
+"""
 struct ScenarioDecomposition <: DecompositionStrategy end
+
+"""
+    SpatialDecomposition <: DecompositionStrategy
+
+Dualize the per-(stage, scenario) cross-reservoir mass-balance
+coupling. Each subproblem is a single `(scenario, reservoir)` 1-D
+dynamic-programming problem; multipliers enforce the cascade
+topology. Used by the GPU-native DP path (milestone C3.5).
+"""
 struct SpatialDecomposition <: DecompositionStrategy end
+
 struct TemporalDecomposition <: DecompositionStrategy end
 struct NonAnticipativityDecomposition <: DecompositionStrategy end
 

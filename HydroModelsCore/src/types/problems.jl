@@ -83,6 +83,13 @@ end
 Risk-aversion specification for stochastic problems.
 """
 abstract type AbstractRiskMeasure end
+
+"""
+    Expectation <: AbstractRiskMeasure
+
+Risk-neutral expectation. The objective is the unweighted mean over
+scenario realizations. The default for SDDP-class long-term problems.
+"""
 struct Expectation <: AbstractRiskMeasure end
 
 """

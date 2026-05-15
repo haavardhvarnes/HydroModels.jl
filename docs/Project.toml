@@ -1,0 +1,12 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+HydroModels = "3bb2d84c-373d-45fe-b371-a5244eeae5e2"
+HydroModelsCore = "35d12705-5efd-4182-93f7-afc386ecd870"
+HydroModelsData = "b83cc262-783b-4d80-bd7e-3698e9ea66d0"
+HydroModelsForecast = "7703e5f2-0d94-41b8-bfdf-7c3b45cd84fa"
+HydroModelsOpt = "3ad2896b-1445-4374-ab33-3e97259a88a5"
+HydroModelsViz = "a798d185-2f50-4def-b29e-c2b8747cb8b1"
+
+[compat]
+Documenter = "1"
+julia = "1.10"

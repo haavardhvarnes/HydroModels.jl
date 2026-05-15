@@ -36,7 +36,19 @@ struct MarkovPriceModel{T}
     initial_probs::Vector{T}
 end
 
+"""
+    num_stages(m::MarkovPriceModel) -> Int
+
+Number of stages (e.g. weeks) the price chain is discretised over.
+"""
 num_stages(m::MarkovPriceModel) = length(m.node_values)
+
+"""
+    num_nodes(m::MarkovPriceModel) -> Int
+
+Number of price nodes (bins) per stage. Returns `0` for an empty
+model.
+"""
 num_nodes(m::MarkovPriceModel) = isempty(m.node_values) ? 0 : length(m.node_values[1])
 
 """
