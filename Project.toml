@@ -1,4 +1,5 @@
 [deps]
+CoolPDLP = "9e90bdc5-3073-4e0f-a275-e19f28ac1b53"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
 HydroModels = "3bb2d84c-373d-45fe-b371-a5244eeae5e2"

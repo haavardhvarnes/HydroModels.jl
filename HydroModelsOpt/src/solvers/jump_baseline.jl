@@ -254,6 +254,30 @@ end
 # ============================================================
 
 """
+    _is_highs_optimizer(optimizer) -> Bool
+
+Internal predicate. Returns `true` iff the parent module of the
+optimizer constructor is `HiGHS`. Used to gate vendor-specific
+attribute defaults (`mip_rel_gap`, `primal_feasibility_tolerance`,
+`mip_feasibility_tolerance`) inside `_build_short_term_lp` so they do
+not silently leak into other LP backends (e.g. `CoolPDLP.Optimizer`)
+that would then fail at `optimize!`.
+
+Handles both bare optimizer constructors (`HiGHS.Optimizer`) and
+`MOI.OptimizerWithAttributes` wrappers.
+"""
+function _is_highs_optimizer(optimizer)
+    optimizer === nothing && return false
+    base = optimizer isa MOI.OptimizerWithAttributes ?
+           optimizer.optimizer_constructor : optimizer
+    try
+        return nameof(parentmodule(base)) === :HiGHS
+    catch
+        return false
+    end
+end
+
+"""
     _build_short_term_lp(prob, optimizer)
 
 Construct the JuMP model for a `ShopShortTermProblem`. Returns
@@ -654,13 +678,17 @@ function _build_short_term_lp(prob::ShopShortTermProblem, optimizer)
     # Water-value slopes (EUR/Mm³) can hit ~5e8 while flow vars are O(1e-3),
     # spanning 11 orders of magnitude. The default 1e-7 tolerance is too
     # tight; bump to 1e-4 so HiGHS doesn't reject otherwise-optimal solutions.
-    if optimizer !== nothing
+    # These attribute names are HiGHS-specific; CoolPDLP and other vendors
+    # accept the attribute store silently and then fail at `optimize!` when
+    # the constructor sees unknown kwargs. Gate on optimizer module name so
+    # the defaults apply only when HiGHS is actually in use.
+    if optimizer !== nothing && _is_highs_optimizer(optimizer)
         try
             JuMP.set_optimizer_attribute(model, "mip_rel_gap", 0.001)
             JuMP.set_optimizer_attribute(model, "primal_feasibility_tolerance", 1e-4)
             JuMP.set_optimizer_attribute(model, "mip_feasibility_tolerance", 1e-4)
         catch
-            # Solver may not support these attributes; non-fatal.
+            # Defensive — non-fatal if the optimizer rejects them.
         end
     end
 
