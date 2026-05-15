@@ -1,7 +1,7 @@
 name = "HydroModelsForecast"
 uuid = "7703e5f2-0d94-41b8-bfdf-7c3b45cd84fa"
-authors = ["Haavard <haavard@example.com>"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 HydroModelsCore = "35d12705-5efd-4182-93f7-afc386ecd870"
@@ -10,6 +10,7 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
+HydroModelsCore = "0.1"
 julia = "1.10"
 
 [extras]

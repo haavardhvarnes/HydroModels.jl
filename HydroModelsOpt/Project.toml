@@ -1,7 +1,7 @@
 name = "HydroModelsOpt"
 uuid = "3ad2896b-1445-4374-ab33-3e97259a88a5"
-authors = ["Haavard <haavard@example.com>"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -39,6 +39,7 @@ HydroModelsOptoneAPIExt = "oneAPI"
 
 [compat]
 GPUArrays = "10, 11"
+HydroModelsCore = "0.1"
 JuMP = "1"
 KernelAbstractions = "0.9"
 MathOptInterface = "1"

@@ -1,7 +1,7 @@
 name = "HydroModelsViz"
 uuid = "a798d185-2f50-4def-b29e-c2b8747cb8b1"
-authors = ["Haavard <haavard@example.com>"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
@@ -21,6 +21,8 @@ HydroModelsVizGLMakieExt = "GLMakie"
 HydroModelsVizWGLMakieExt = "WGLMakie"
 
 [compat]
+HydroModelsCore = "0.1"
+HydroModelsOpt = "0.1"
 Makie = "0.21, 0.22, 0.23, 0.24, 0.25"
 julia = "1.10"
 

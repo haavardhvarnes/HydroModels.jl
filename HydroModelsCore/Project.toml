@@ -1,7 +1,7 @@
 name = "HydroModelsCore"
 uuid = "35d12705-5efd-4182-93f7-afc386ecd870"
-authors = ["Haavard <haavard@example.com>"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"

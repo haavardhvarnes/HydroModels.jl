@@ -1,7 +1,7 @@
 name = "HydroModels"
 uuid = "3bb2d84c-373d-45fe-b371-a5244eeae5e2"
-authors = ["Haavard <haavard@example.com>"]
-version = "0.1.0-DEV"
+authors = ["Håvard Hvarnes <haavardhvarnes@gmail.com>"]
+version = "0.1.0"
 
 [deps]
 HydroModelsCore = "35d12705-5efd-4182-93f7-afc386ecd870"
@@ -9,6 +9,8 @@ HydroModelsOpt = "3ad2896b-1445-4374-ab33-3e97259a88a5"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 
 [compat]
+HydroModelsCore = "0.1"
+HydroModelsOpt = "0.1"
 Reexport = "1"
 julia = "1.10"
 
